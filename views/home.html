@@ -1,0 +1,125 @@
+<!--
+ Copyright 2019 Google Inc.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>WebAuthn Codelab</title>
+  <meta name="description" content="WebAuthn Codelab">
+  <link id="favicon" rel="icon" href="https://glitch.com/edit/favicon-app.ico" type="image/x-icon">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- import the webpage's stylesheet -->
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css">
+  <script
+    src="https://cdn.jsdelivr.net/gh/herrjemand/Base64URL-ArrayBuffer@latest/lib/base64url-arraybuffer.js"></script>
+</head>
+
+<body class="mdc-typography">
+  <header class="mdc-top-app-bar" style="top:0px; background-color: cornflowerblue;">
+    <h1 class="mdc-top-app-bar__title">
+      MyDID
+    </h1>
+  </header>
+
+  <main class="content mdc-top-app-bar--fixed-adjust">
+    <h1>
+      Welcome, {{username}}!
+    </h1>
+    <h2 class="mdc-typography mdc-typography--headline6">
+      원하시는 버튼을 선택하여 주세요
+    </h2>
+
+    <section>
+      <div id="list"></div>
+      <button id="authenticate" class="mdc-fab mdc-ripple-upgraded">
+        <i class="mdc-fab__icon material-icons">인증</i>
+      </button>
+      <button id="register" class="mdc-fab mdc-ripple-upgraded">
+        <i class="mdc-fab__icon material-icons">등록</i>
+      </button>
+    </section>
+    <button class="mdc-button"><a href="/auth/signout">다시 입력하기</a></button>
+  </main>
+  <script type="module">
+    import { _fetch, registerCredential, unregisterCredential, authenticate } from '/client.js';
+    import { html, render } from 'https://unpkg.com/lit-html@1.0.0/lit-html.js?module';
+    import { repeat } from 'https://unpkg.com/lit-html@1.0.0/directives/repeat.js?module';
+
+    const register = document.querySelector('#register');
+    register.addEventListener('click', e => {
+      registerCredential({
+        attestation: 'none',
+        authenticatorSelection: {
+          authenticatorAttachment: 'platform',
+          userVerification: 'required',
+          requireResidentKey: false
+        }
+      })
+        .then(user => {
+          alert(user.message);
+          getCredentials();
+        })
+        .catch(e => alert(e));
+    });
+    const authenticateDom = document.querySelector('#authenticate');
+    authenticateDom.addEventListener('click', e => {
+      authenticate({}).then(user => {
+        if (user) {
+          alert('인증이 완료되었습니다.');
+          location.href = '/home';
+        }
+      }).catch(e => {
+        alert('등록되지 않은 지문입니다. 사용하고자하는 서비스 사이트에 DID등록을 해주시기 바랍니다.');
+        location.href = '/home';
+      });
+    })
+
+    const removeCredential = async e => {
+      try {
+        await unregisterCredential(e.target.id);
+        getCredentials();
+      } catch (e) {
+        alert(e);
+      }
+    };
+
+    const getCredentials = async () => {
+      const res = await _fetch('/auth/getKeys');
+      const list = document.querySelector('#list');
+      if (res.credentials.length === 0) {
+        list.innerHTML = '<div>No credentials found.</div>';
+        return;
+      }
+      const creds = html`${repeat(res.credentials, cred => cred.credId, (cred, index) =>
+        html`<div class="mdc-card credential">
+            <span class="mdc-typography mdc-typography--body2">${cred.credId}</span>
+            <pre class="public-key">${cred.publicKey}</pre>
+            <div class="mdc-card__actions">
+              <button id="${cred.credId}" class="mdc-button mdc-button--raised" @click="${removeCredential}">Remove</button>
+            </div>
+          </div>`)}`;
+      render(creds, list);
+    };
+    getCredentials();
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,68 @@
+{
+    "name": "basic-network",
+    "version": "1.0.0",
+    "client":{
+	"organization":"Org1"
+    },
+    "channels": {
+        "mychannel": {
+            "orderers": [
+                "orderer.example.com"
+            ],
+            "peers": {
+                "peer0.org1.example.com": {
+                    "endorsingPeer": true,
+                    "chaincodeQuery": true,
+                    "ledgerQuery": true,
+                    "eventSource": true
+                }
+            }
+        }
+    },
+    "organizations": {
+        "Org1": {
+            "mspid": "Org1MSP",
+            "peers": [
+                "peer0.org1.example.com"
+            ],
+            "certificateAuthorities": [
+                "ca.example.com"
+            ]
+        }
+    },
+    "orderers": {
+        "orderer.example.com": {
+            "url": "grpcs://210.107.78.154:7050",
+            "grpcOptions": {
+                "ssl-target-name-override": "orderer.example.com"
+            },
+            "tlsCACerts": {
+                "path": "../HLF/fabric-samples/baba2/crypto-config/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
+            }
+        }
+    },
+    "peers": {
+        "peer0.org1.example.com": {
+            "url": "grpcs://210.107.78.154:7051",
+            "grpcOptions": {
+                "ssl-target-name-override": "peer0.org1.example.com",
+                "hostnameOverride": "peer0.org1.example.com"
+            },
+            "tlsCACerts": {
+                "path": "../HLF/fabric-samples/baba2/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/msp/tlscacerts/tlsca.org1.example.com-cert.pem"
+            }
+        }
+    },
+    "certificateAuthorities": {
+        "ca.example.com": {
+            "url": "http://210.107.78.154:7054",
+            "caName": "ca.example.com",
+            "tlsCACerts": {
+                "path": "../HLF/fabric-samples/baba2/crypto-config/peerOrganizations/org1.example.com/ca/ca.org1.example.com-cert.pem"
+            },
+            "httpOptions": {
+                "verify": false
+            }
+        }
+    }
+}

@@ -1,0 +1,74 @@
+<!--
+ Copyright 2019 Google Inc.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>WebAuthn Codelab</title>
+  <meta name="description" content="WebAuthn Codelab">
+  <link id="favicon" rel="icon" href="https://glitch.com/edit/favicon-app.ico" type="image/x-icon">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- import the webpage's stylesheet -->
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css">
+</head>
+
+<body class="mdc-typography">
+  <header class="mdc-top-app-bar" style="top:0px; background-color: cornflowerblue;">
+    <h1 class="mdc-top-app-bar__title">
+      MyDID
+    </h1>
+  </header>
+  <main class="content mdc-top-app-bar--fixed-adjust">
+    <h1>
+      아이디 입력
+    </h1>
+    <form id="form" method="POST" action="/auth/username">
+      <div class="mdc-text-field">
+        <input type="text" class="mdc-text-field__input" name="username" placeholder="아이디" />
+        <div class="mdc-line-ripple"></div>
+
+      </div>
+      <input type="submit" class="mdc-button mdc-button--raised" value="Next"
+        style="position: fixed; bottom:0vw; left:0vw; width:100vw; height: 20vw; background-color: cornflowerblue;" />
+    </form>
+    <h2>WEB에서 사용하는 아이디를 입력하세요.</h2>
+    <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+    <script type="module">
+      new mdc.textField.MDCTextField(document.querySelector('.mdc-text-field'));
+      import { _fetch } from '/client.js';
+      const form = document.querySelector('#form');
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const form = new FormData(e.target);
+        const cred = {};
+        form.forEach((v, k) => cred[k] = v);
+        _fetch(e.target.action, cred)
+          .then(user => {
+            location.href = '/reauth';
+          }).catch(e => {
+            alert(e.error);
+          });
+      });
+    </script>
+  </main>
+</body>
+
+</html>
