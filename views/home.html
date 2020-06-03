@@ -75,7 +75,7 @@
       })
         .then(user => {
           alert(user.message);
-          getCredentials();
+          location.href = '/home';
         })
         .catch(e => alert(e));
     });
@@ -92,33 +92,6 @@
       });
     })
 
-    const removeCredential = async e => {
-      try {
-        await unregisterCredential(e.target.id);
-        getCredentials();
-      } catch (e) {
-        alert(e);
-      }
-    };
-
-    const getCredentials = async () => {
-      const res = await _fetch('/auth/getKeys');
-      const list = document.querySelector('#list');
-      if (res.credentials.length === 0) {
-        list.innerHTML = '<div>No credentials found.</div>';
-        return;
-      }
-      const creds = html`${repeat(res.credentials, cred => cred.credId, (cred, index) =>
-        html`<div class="mdc-card credential">
-            <span class="mdc-typography mdc-typography--body2">${cred.credId}</span>
-            <pre class="public-key">${cred.publicKey}</pre>
-            <div class="mdc-card__actions">
-              <button id="${cred.credId}" class="mdc-button mdc-button--raised" @click="${removeCredential}">Remove</button>
-            </div>
-          </div>`)}`;
-      render(creds, list);
-    };
-    getCredentials();
   </script>
 </body>
 
