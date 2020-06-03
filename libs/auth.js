@@ -110,7 +110,7 @@ router.post('/username', (req, res) => {
         timestamp: timestamp,
         to: to,
         from: from,
-        text: "본인확인을 위해 인증번호[" + reginumber + "] 를 입력해주세요. 타인에게 절대 유출 금지",
+        text: "[MyDID] 본인확인을 위해 인증번호[" + reginumber + "] 를 입력해주세요. 타인에게 절대 유출 금지♥",
       };
 
       request.post({ url: "http://api.coolsms.co.kr/sms/1.5/send", formData: params }, (
