@@ -14,9 +14,11 @@
     "express": "^4.16.4",
     "fabric-ca-client": "^1.4.8",
     "fabric-network": "^1.4.8",
-    "fido2-lib": "agektmr/fido2-lib#android-compatible3",
+    "fido2-lib": "github:agektmr/fido2-lib#android-compatible3",
     "hbs": "^4.0.4",
-    "lowdb": "^1.0.0"
+    "lowdb": "^1.0.0",
+    "request": "^2.88.2",
+    "uniqid": "^5.2.0"
   },
   "engines": {
     "node": "8.x"

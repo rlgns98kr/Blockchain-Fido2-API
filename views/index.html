@@ -62,6 +62,7 @@
         form.forEach((v, k) => cred[k] = v);
         _fetch(e.target.action, cred)
           .then(user => {
+            alert(user.message);
             location.href = '/reauth';
           }).catch(e => {
             alert(e.error);

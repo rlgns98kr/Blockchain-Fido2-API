@@ -1,19 +1,3 @@
-/*
- * @license
- * Copyright 2019 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License
- */
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
@@ -24,6 +8,8 @@ const { coerceToBase64Url,
 } = require('fido2-lib/lib/utils');
 const fs = require('fs');
 const chain = require('./MyDID-HLF-SDK');
+var uniqid = require("uniqid");
+var request = require("request");
 
 const low = require('lowdb');
 
@@ -41,22 +27,14 @@ db.defaults({
   users: []
 }).write();
 
+var phoneNumbers = {
+  '01049067547': '0101'
+}
 var registerObjects = {
-  '1234::1234': {
-    id: 'yho.ddcdddo.d.m.com::112',
-    username: '112',
-    url: 'yho.com'
+  '01049067547::0101': {
+    phone: '01049067547'
   }
 };
-var signinObjects = {
-  '1234::1234': {
-    id: 'yho.ddcdddo.d.m.com::112',
-    username: '112',
-    url: 'yho.com'
-  }
-}
-
-router.use(express.json());
 
 
 const f2l = new Fido2Lib({
@@ -98,35 +76,6 @@ const sessionCheck = (req, res, next) => {
  * Set a `username` cookie.
  **/
 
-router.post('/register', (req, res) => {
-  if (req.get('User-Agent').indexOf('okhttp') > -1) {
-    res.status(400).send({ error: 'Bad request' });
-    return;
-  } else {
-    const username = req.body.username;
-    const urlimsi = new URL(req.headers.origin);
-    const url = urlimsi.hostname;
-    const registerNumber = req.body.registerNumber;
-    const registerObjectId = username + '::' + registerNumber;
-    if (url && urlimsi && registerNumber && !registerObjects[registerObjectId]) {
-      registerObjects[registerObjectId] = {
-        id: url + '::' + username,
-        username: username,
-        url: url
-      }
-      res.json({ message: '5분안에 MyDID 앱에서 등록절차를 마무리하신 후 확인 버튼을 눌러주세요.' });
-      console.log(registerObjectId, url);
-      setTimeout(() => {
-        delete registerObjects[registerObjectId];
-      }, 300000);
-    }
-    else {
-      res.json({ message: '다른 인증 번호를 입력하여 주십시오' });
-    }
-  }
-  //실제 서비스에서는 휴대폰 본인인증 등 무분별한 등록을 막을 logic이 필요함
-})
-
 router.post('/username', (req, res) => {
   const username = req.body.username;
   // Only check username, no need to check password as this is a mock
@@ -134,9 +83,68 @@ router.post('/username', (req, res) => {
     res.status(400).send({ error: 'Bad request' });
     return;
   } else {
-    res.cookie('username', username);
-    // If sign-in succeeded, redirect to `/home`.
-    res.json(username);
+    let user = db.get('users')
+      .find({ id: username })
+      .value();
+    if (!user) {
+      res.cookie('username', username);
+      // If sign-in succeeded, redirect to `/home`.
+
+      var reginumber = parseInt(Math.random() * 999999);
+      reginumber = reginumber.toString();
+      if (reginumber.length !== 6) {
+        console.log('0입니다!');
+        console.log(reginumber.length);
+        const l = reginumber.length;
+        for (let i = 0; i < 6 - l; i++) {
+          reginumber = '0' + reginumber;
+        }
+      }
+
+
+      var apiKey = "NCSCWSQYYSU7EEAL";
+      var apiSecret = "JQ1WITPEUZXL3TAJQKUXHTJ8BZDLOJUK";
+      var timestamp = Math.floor(new Date().getTime() / 1000);
+      var salt = uniqid();
+      var signature = crypto
+        .createHmac("md5", apiSecret)
+        .update(timestamp + salt)
+        .digest("hex");
+      var to = username;
+      var from = "01049067547";
+
+      var params = {
+        api_key: apiKey,
+        salt: salt,
+        signature: signature,
+        timestamp: timestamp,
+        to: to,
+        from: from,
+        text: "인증번호는 [" + reginumber + "] 입니다.",
+      };
+
+      request.post({ url: "http://api.coolsms.co.kr/sms/1.5/send", formData: params }, function (
+        err,
+        res,
+        body
+      ) {
+        console.log("body:", body);
+        if (!err && res.statusCode == "200") {
+          console.log("body:", body);
+          res.json({ message: "등록되지 않은 휴대폰번호입니다. 문자메세지를 확인 후 인증번호를 입력하시어 등록을 마무리 해주시기 바랍니다." });
+        } else {
+          console.log(err);
+          res.json({ message: "문자메세지 전송에 실패하였습니다. 다시 입력하기 버튼을 눌러 핸드폰 번호를 다시 입력해주세요!" })
+        }
+      });
+
+      //인증번호 보내고 저장
+    } else {
+      res.cookie('username', username);
+      res.cookie('signed-in', 'yes');
+      res.json({ message: "등록된 휴대폰번호입니다. 인증 버튼을 눌러 인증을 마무리 해주시길 바랍니다." });
+    }
+
   }
 });
 
@@ -153,16 +161,18 @@ router.post('/password', (req, res) => {
     res.status(401).json({ error: 'Enter at least one random letter.' });
     return;
   }
-  const userkey = req.cookies.username + "::" + req.body.password;
-  console.log("regi" + registerObjects[userkey]);
-  console.log("sign" + signinObjects[userkey]);
-  if (!registerObjects[userkey] && !signinObjects[userkey]) {
-    res.status(401).json({ error: 'Id와 인증번호를 확인하여 주십시오. FiDo2 기반 DID 서비스를 사용하려는 웹에서 먼저 등록해야 합니다. 등록이 완료된 상태라면 인증과 등록 중 올바른 메뉴를 선택하세요.' });
+  const userkey = req.cookies.username + '::' + req.body.password;
+  if (!registerObjects[userkey]) {
+    res.status(401).json({ error: '올바른 핸드폰 번호를 사용하여 주십시오!' });
     return;
+  }
+  else {
+    res.status(200).json({ message: '인증완료! 지문을 등록하여 주십시오!', key: 1 })
   }
   res.cookie('username', userkey);
   res.cookie('signed-in', 'yes');
   res.json(userkey);
+  //
 });
 
 router.get('/signout', (req, res) => {
@@ -275,58 +285,60 @@ router.get('/resetDB', (req, res) => {
  **/
 router.post('/registerRequest', csrfCheck, sessionCheck, async (req, res) => {
   console.log(req.cookies.username);
-  const username = registerObjects[req.cookies.username].id;
-  let user = db.get('users')
-    .find({ id: username })
-    .value();
-  try {
-    if (!user) {
-      user = registerObjects[req.cookies.username];
-      const response = await f2l.attestationOptions();
-      response.user = {
-        displayName: 'No name',
-        id: user.id,
-        name: user.username
-      };
-      response.challenge = coerceToBase64Url(response.challenge, 'challenge');
-      res.cookie('challenge', response.challenge);
-      response.pubKeyCredParams = [];
-      // const params = [-7, -35, -36, -257, -258, -259, -37, -38, -39, -8];
-      const params = [-7, -257];
-      for (let param of params) {
-        response.pubKeyCredParams.push({ type: 'public-key', alg: param });
-      }
-      const as = {}; // authenticatorSelection
-      const aa = req.body.authenticatorSelection.authenticatorAttachment;
-      const rr = req.body.authenticatorSelection.requireResidentKey;
-      const uv = req.body.authenticatorSelection.userVerification;
-      const cp = req.body.attestation; // attestationConveyancePreference
-      let asFlag = false;
+  if (registerObjects[req.cookies.username]) {
+    const username = registerObjects[req.cookies.username].phone;
+    let user = db.get('users')
+      .find({ id: username })
+      .value();
+    try {
+      if (!user) {
+        user = registerObjects[req.cookies.username];
+        const response = await f2l.attestationOptions();
+        response.user = {
+          id: user.id,
+        };
+        response.challenge = coerceToBase64Url(response.challenge, 'challenge');
+        res.cookie('challenge', response.challenge);
+        response.pubKeyCredParams = [];
+        // const params = [-7, -35, -36, -257, -258, -259, -37, -38, -39, -8];
+        const params = [-7, -257];
+        for (let param of params) {
+          response.pubKeyCredParams.push({ type: 'public-key', alg: param });
+        }
+        const as = {}; // authenticatorSelection
+        const aa = req.body.authenticatorSelection.authenticatorAttachment;
+        const rr = req.body.authenticatorSelection.requireResidentKey;
+        const uv = req.body.authenticatorSelection.userVerification;
+        const cp = req.body.attestation; // attestationConveyancePreference
+        let asFlag = false;
 
-      if (aa && (aa == 'platform' || aa == 'cross-platform')) {
-        asFlag = true;
-        as.authenticatorAttachment = aa;
+        if (aa && (aa == 'platform' || aa == 'cross-platform')) {
+          asFlag = true;
+          as.authenticatorAttachment = aa;
+        }
+        if (rr && typeof rr == 'boolean') {
+          asFlag = true;
+          as.requireResidentKey = rr;
+        }
+        if (uv && (uv == 'required' || uv == 'preferred' || uv == 'discouraged')) {
+          asFlag = true;
+          as.userVerification = uv;
+        }
+        if (asFlag) {
+          response.authenticatorSelection = as;
+        }
+        if (cp && (cp == 'none' || cp == 'indirect' || cp == 'direct')) {
+          response.attestation = cp;
+        }
+        res.json(response);
+      } else {
+        res.status(400).send({ error: "해당 계정에 대한 Fido2 Credential이 존재합니다." });
       }
-      if (rr && typeof rr == 'boolean') {
-        asFlag = true;
-        as.requireResidentKey = rr;
-      }
-      if (uv && (uv == 'required' || uv == 'preferred' || uv == 'discouraged')) {
-        asFlag = true;
-        as.userVerification = uv;
-      }
-      if (asFlag) {
-        response.authenticatorSelection = as;
-      }
-      if (cp && (cp == 'none' || cp == 'indirect' || cp == 'direct')) {
-        response.attestation = cp;
-      }
-      res.json(response);
-    } else {
-      res.status(400).send({ error: "해당 계정에 대한 Fido2 Credential이 존재합니다." });
+    } catch (e) {
+      console.log(e);
+      res.status(400).send({ error: e });
     }
-  } catch (e) {
-    console.log(e);
+  } else {
     res.status(400).send({ error: e });
   }
 });
@@ -385,55 +397,43 @@ router.post('/registerResponse', csrfCheck, sessionCheck, async (req, res) => {
     };
 
     let user = db.get('users')
-      .find({ id: registerObjects[username].id })
+      .find({ id: registerObjects[username].phone })
       .value();
     if (!user) {
       user = {};
 
-      user.id = registerObjects[username].id;
-      user.url = registerObjects[username].url;
-      user.name = registerObjects[username].username;
+      user.id = registerObjects[username].phone;
       user.credentials = credential;
 
       await db.get('users')
         .push(user)
         .write();
 
-      res.clearCookie('challenge');
-      res.clearCookie('username');
+
       delete registerObjects[req.cookies.username];
 
       await chain.insert(user.id, credential.publicKey);
       // Respond with user info
       user.message = "등록완료!!";
-      res.json(user);
-    } else {
       res.clearCookie('challenge');
       res.clearCookie('username');
+      res.json(user);
+    } else {
+
       delete registerObjects[req.cookies.username];
       // Respond with user info
+      res.clearCookie('challenge');
+      res.clearCookie('username');
       res.status(400).send({ message: "해당 유저의 credentials이 존재합니다!" });
     }
   } catch (e) {
+
+    delete registerObjects[req.cookies.username];
     res.clearCookie('challenge');
     res.clearCookie('username');
-    delete registerObjects[req.cookies.username];
     res.status(400).send({ error: e.message });
   }
 });
-
-router.post('/confirmregister', (req, res) => {
-  const memkey = req.body.username + '::' + req.body.registerNumber;
-  const dbkey = new URL(req.headers.origin).hostname + '::' + req.body.username;
-  console.log(memkey, dbkey);
-  if (db.get('users').find({ id: dbkey }).value()) {
-    res.json({ message: "등록이 성공적으로 완료되었습니다." });
-  } else if (registerObjects[memkey]) {
-    res.json({ message: "등록 중입니다. 잠시만 기다려 주십시오" });
-  } else {
-    res.json({ message: "등록에 실패하였습니다. 처음부터 다시 시도해주세요" });
-  }
-})
 /**
  * Respond with required information to call navigator.credential.get()
  * Input is passed via `req.body` with similar format as output
@@ -451,30 +451,33 @@ router.post('/confirmregister', (req, res) => {
  * }```
  **/
 router.post('/registersignin', (req, res) => {
+  const phoneNumber = req.body.phoneNumber;
   if (req.get('User-Agent').indexOf('okhttp') > -1) {
     res.status(400).send({ error: 'Bad request' });
     return;
   } else {
-    const username = req.body.username;
-    const urlimsi = new URL(req.headers.origin);
-    const url = urlimsi.hostname;
-    const registerNumber = req.body.registerNumber;
-    const registerObjectId = username + '::' + registerNumber;
-    console.log(signinObjects[registerObjectId]);
-    if (!signinObjects[registerObjectId]) {
-      signinObjects[registerObjectId] = {
-        id: url + '::' + username,
-        username: username,
-        url: url
-      }
-      res.json({ message: '5분안에 MyDID 앱에서 등록절차를 마무리하신 후 확인 버튼을 눌러주세요.' });
-      console.log(registerObjectId, url);
-      setTimeout(() => {
-        delete signinObjects[registerObjectId];
-      }, 300000)
+    user = db.get('users')
+      .find({ id: phoneNumber })
+      .value();
+    if (!user) {
+      res.json({ message: '등록되지 않은 휴대폰 번호입니다!', key: 0 });
     }
     else {
-      res.json({ message: '다른 인증 번호를 입력하여 주십시오' });
+      phoneNumbers[phoneNumber] = { confirm: false };
+      const a = setInterval(() => {
+        if (phoneNumbers[phoneNumber].confirm === true) {
+          delete phoneNumbers[phoneNumber];
+          res.json({ message: '인증 성공!', key: 1 });
+          clearInterval(a);
+        }
+      }, 100)
+
+      setTimeout(() => {
+        clearInterval(a);
+        delete phoneNumbers[phoneNumber];
+        res.json({ message: '인증 시간 초과! 다시 인증요청을 해주세요', key: 2 })
+      }, 180000);
+
     }
   }
   //실제 서비스에서는 휴대폰 본인인증 등 무분별한 등록을 막을 logic이 필요함
@@ -483,38 +486,34 @@ router.post('/registersignin', (req, res) => {
 router.post('/signinRequest', csrfCheck, async (req, res) => {
   try {
     console.log(req.cookies.username);
-    if (signinObjects[req.cookies.username]) {
 
-      const username = signinObjects[req.cookies.username];
-      const user = db.get('users')
-        .find({ id: username.id })
-        .value();
+    const username = req.cookies.username;
+    const user = db.get('users')
+      .find({ id: username })
+      .value();
 
-      if (!user) {
-        // Send empty response if user is not registered yet.
-        res.json({ error: 'User not found.' });
-        return;
-      }
-
-      const credId = user.credentials.credId;
-
-      const response = await f2l.assertionOptions();
-
-      // const response = {};
-      response.userVerification = req.body.userVerification || 'required';
-      response.challenge = coerceToBase64Url(response.challenge, 'challenge');
-      res.cookie('challenge', response.challenge);
-
-      response.allowCredentials = [];
-      response.allowCredentials.push({
-        id: credId,
-        type: 'public-key',
-        transports: ['internal']
-      });
-      res.json(response);
-    } else {
-      res.status(401).json({ error: 'Id와 인증번호를 확인하여 주십시오. FiDo2 기반 DID 서비스를 사용하려는 웹에서 먼저 인증요청을 해야 합니다.' });
+    if (!user) {
+      // Send empty response if user is not registered yet.
+      res.json({ error: 'User not found.' });
+      return;
     }
+
+    const credId = user.credentials.credId;
+
+    const response = await f2l.assertionOptions();
+
+    // const response = {};
+    response.userVerification = req.body.userVerification || 'required';
+    response.challenge = coerceToBase64Url(response.challenge, 'challenge');
+    res.cookie('challenge', response.challenge);
+
+    response.allowCredentials = [];
+    response.allowCredentials.push({
+      id: credId,
+      type: 'public-key',
+      transports: ['internal']
+    });
+    res.json(response);
   } catch (e) {
     res.status(400).json({ error: e });
   }
@@ -539,7 +538,7 @@ router.post('/signinRequest', csrfCheck, async (req, res) => {
 router.post('/signinResponse', csrfCheck, async (req, res) => {
   // Query the user
   const user = db.get('users')
-    .find({ id: signinObjects[req.cookies.username].id })
+    .find({ id: req.cookies.username })
     .value();
 
   let credential = null;
@@ -574,7 +573,6 @@ router.post('/signinResponse', csrfCheck, async (req, res) => {
       userHandle: coerceToArrayBuffer(user.id, 'userHandle')
     };
 
-    signinObjects[req.cookies.username] = { confirm: 0 }
     const result = await f2l.assertionResult(clientAssertionResponse, assertionExpectations);
 
     credential.prevCounter = result.authnrData.get("counter");
@@ -584,28 +582,16 @@ router.post('/signinResponse', csrfCheck, async (req, res) => {
       .assign(user)
       .write();
 
-    signinObjects[req.cookies.username] = { confirm: 1 }
-    res.clearCookie('id');
+    phoneNumbers[req.cookies.id].confirm = true;
+
     res.clearCookie('challenge');
     res.clearCookie('username');
     res.json(user);
   } catch (e) {
-    res.clearCookie('id');
     res.clearCookie('challenge');
     res.clearCookie('username');
     res.status(400).json({ error: e });
   }
 });
-router.post('/confirmsignin', (req, res) => {
-  const memkey = req.body.username + '::' + req.body.registerNumber;
-  const dbkey = new URL(req.headers.origin).hostname + '::' + req.body.username;
-  if (signinObjects[memkey].confirm === 1) {
-    delete signinObjects[memkey];
-    res.json({ message: "인증이 완료되었습니다!", key: '1' });
-  } else {
-    delete signinObjects[memkey];
-    res.json({ message: "인증에 실패하였습니다. 처음부터 다시 시도해주세요" });
-  }
-})
 
 module.exports = router;
