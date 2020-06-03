@@ -27,14 +27,8 @@ db.defaults({
   users: []
 }).write();
 
-var phoneNumbers = {
-  '01049067547': {
-    confirm: 'false'
-  }
-}
-var registerObjects = {
-
-};
+var phoneNumbers = {};
+var registerObjects = {};
 
 
 const f2l = new Fido2Lib({
