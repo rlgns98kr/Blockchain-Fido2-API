@@ -112,7 +112,6 @@ router.post('/username', (req, res) => {
         .digest("hex");
       var to = username;
       var from = "01049067547";
-
       var params = {
         api_key: apiKey,
         salt: salt,
