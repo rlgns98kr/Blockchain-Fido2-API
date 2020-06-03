@@ -94,6 +94,10 @@ app.get('/reauth', (req, res) => {
     res.redirect(302, '/');
     return;
   }
+  if (req.cookies['signed-in'] === 'yes') {
+    res.redirect(302, 'home');
+    return;
+  }
   // Show `reauth.html`.
   // User is supposed to enter a password (which will be ignored)
   // Make XHR POST to `/signin`
