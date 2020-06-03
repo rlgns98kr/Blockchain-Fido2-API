@@ -28,12 +28,12 @@ db.defaults({
 }).write();
 
 var phoneNumbers = {
-  '01049067547': '0101'
+  '01049067547': {
+    confirm: 'false'
+  }
 }
 var registerObjects = {
-  '01049067547::0101': {
-    phone: '01049067547'
-  }
+
 };
 
 
@@ -87,14 +87,11 @@ router.post('/username', (req, res) => {
       .find({ id: username })
       .value();
     if (!user) {
-      res.cookie('username', username);
       // If sign-in succeeded, redirect to `/home`.
 
       var reginumber = parseInt(Math.random() * 999999);
       reginumber = reginumber.toString();
       if (reginumber.length !== 6) {
-        console.log('0입니다!');
-        console.log(reginumber.length);
         const l = reginumber.length;
         for (let i = 0; i < 6 - l; i++) {
           reginumber = '0' + reginumber;
@@ -119,29 +116,36 @@ router.post('/username', (req, res) => {
         timestamp: timestamp,
         to: to,
         from: from,
-        text: "인증번호는 [" + reginumber + "] 입니다.",
+        text: "본인확인을 위해 인증번호[" + reginumber + "] 를 입력해주세요. 타인에게 절대 유출 금지",
       };
 
-      request.post({ url: "http://api.coolsms.co.kr/sms/1.5/send", formData: params }, function (
+      request.post({ url: "http://api.coolsms.co.kr/sms/1.5/send", formData: params }, (
         err,
-        res,
+        ress,
         body
-      ) {
+      ) => {
+        let sw = 0;
         console.log("body:", body);
-        if (!err && res.statusCode == "200") {
-          console.log("body:", body);
-          res.json({ message: "등록되지 않은 휴대폰번호입니다. 문자메세지를 확인 후 인증번호를 입력하시어 등록을 마무리 해주시기 바랍니다." });
+        if (!err && ress.statusCode == "200") {
+          sw = 1;
+          registerObjects[username + '::' + reginumber] = {};
+          registerObjects[username + '::' + reginumber].phone = username;
+          res.cookie('username', username);
+          res.json({ message: "문자메세지를 확인 후 인증번호를 입력하시어 등록을 마무리 해주시기 바랍니다." });
         } else {
           console.log(err);
-          res.json({ message: "문자메세지 전송에 실패하였습니다. 다시 입력하기 버튼을 눌러 핸드폰 번호를 다시 입력해주세요!" })
+          sw = -1
+          res.json({ message: "문자메세지 전송에 실패하였습니다. 올바른 Phone Number를 입력 해주세요." })
         }
       });
 
       //인증번호 보내고 저장
-    } else {
+    } else if (phoneNumbers[username]) {
       res.cookie('username', username);
       res.cookie('signed-in', 'yes');
-      res.json({ message: "등록된 휴대폰번호입니다. 인증 버튼을 눌러 인증을 마무리 해주시길 바랍니다." });
+      res.json({ message: "인증 버튼을 눌러 인증을 마무리 해주시길 바랍니다." });
+    } else {
+      res.json({ message: "등록된 휴대폰번호입니다." });
     }
 
   }
@@ -166,12 +170,10 @@ router.post('/password', (req, res) => {
     return;
   }
   else {
+    res.cookie('signed-in', 'yes');
+    res.cookie('username', userkey);
     res.status(200).json({ message: '인증완료! 지문을 등록하여 주십시오!', key: 1 })
   }
-  res.cookie('username', userkey);
-  res.cookie('signed-in', 'yes');
-  res.json(userkey);
-  //
 });
 
 router.get('/signout', (req, res) => {
@@ -283,7 +285,6 @@ router.get('/resetDB', (req, res) => {
  * }
  **/
 router.post('/registerRequest', csrfCheck, sessionCheck, async (req, res) => {
-  console.log(req.cookies.username);
   if (registerObjects[req.cookies.username]) {
     const username = registerObjects[req.cookies.username].phone;
     let user = db.get('users')
@@ -294,7 +295,9 @@ router.post('/registerRequest', csrfCheck, sessionCheck, async (req, res) => {
         user = registerObjects[req.cookies.username];
         const response = await f2l.attestationOptions();
         response.user = {
-          id: user.id,
+          id: user.phone,
+          displayName: 'No name',
+          name: user.phone
         };
         response.challenge = coerceToBase64Url(response.challenge, 'challenge');
         res.cookie('challenge', response.challenge);
@@ -338,7 +341,7 @@ router.post('/registerRequest', csrfCheck, sessionCheck, async (req, res) => {
       res.status(400).send({ error: e });
     }
   } else {
-    res.status(400).send({ error: e });
+    res.status(400).json({ error: "세션이 만료되었습니다. '다시 입력하기'를 눌러 다시 시도해주세요!" })
   }
 });
 /**
@@ -416,6 +419,7 @@ router.post('/registerResponse', csrfCheck, sessionCheck, async (req, res) => {
       user.message = "등록완료!!";
       res.clearCookie('challenge');
       res.clearCookie('username');
+      res.clearCookie('signed-in');
       res.json(user);
     } else {
 
@@ -423,6 +427,7 @@ router.post('/registerResponse', csrfCheck, sessionCheck, async (req, res) => {
       // Respond with user info
       res.clearCookie('challenge');
       res.clearCookie('username');
+      res.clearCookie('signed-in');
       res.status(400).send({ message: "해당 유저의 credentials이 존재합니다!" });
     }
   } catch (e) {
@@ -455,26 +460,32 @@ router.post('/registersignin', (req, res) => {
     res.status(400).send({ error: 'Bad request' });
     return;
   } else {
-    user = db.get('users')
+    const user = db.get('users')
       .find({ id: phoneNumber })
       .value();
     if (!user) {
-      res.json({ message: '등록되지 않은 휴대폰 번호입니다!', key: 0 });
+      res.json({ message: '등록되지 않은 휴대폰 번호입니다!', key: '0' });
     }
     else {
       phoneNumbers[phoneNumber] = { confirm: false };
       const a = setInterval(() => {
-        if (phoneNumbers[phoneNumber].confirm === true) {
-          delete phoneNumbers[phoneNumber];
-          res.json({ message: '인증 성공!', key: 1 });
+        if (phoneNumbers[phoneNumber]) {
+          if (phoneNumbers[phoneNumber].confirm === true) {
+            delete phoneNumbers[phoneNumber];
+            res.json({ message: '인증 성공!', key: '1' });
+            clearInterval(a);
+            clearTimeout(b);
+          }
+        } else {
+          res.json({ message: '지문 인증 실패!', key: '3' });
           clearInterval(a);
+          clearTimeout(b);
         }
       }, 100)
-
-      setTimeout(() => {
+      const b = setTimeout(() => {
         clearInterval(a);
         delete phoneNumbers[phoneNumber];
-        res.json({ message: '인증 시간 초과! 다시 인증요청을 해주세요', key: 2 })
+        res.json({ message: '인증 시간 초과! 다시 인증요청을 해주세요', key: '2' })
       }, 180000);
 
     }
@@ -484,7 +495,6 @@ router.post('/registersignin', (req, res) => {
 
 router.post('/signinRequest', csrfCheck, async (req, res) => {
   try {
-    console.log(req.cookies.username);
 
     const username = req.cookies.username;
     const user = db.get('users')
@@ -496,9 +506,12 @@ router.post('/signinRequest', csrfCheck, async (req, res) => {
       res.json({ error: 'User not found.' });
       return;
     }
-
+    const pub = await chain.query(req.cookies.username);
+    if (pub.toString() !== user.credentials.publicKey.toString()) {
+      res.json({ error: 'This public is not valid' });
+      return;
+    }
     const credId = user.credentials.credId;
-
     const response = await f2l.assertionOptions();
 
     // const response = {};
@@ -548,7 +561,6 @@ router.post('/signinResponse', csrfCheck, async (req, res) => {
     if (!credential) {
       throw 'Authenticating credential not found.';
     }
-
     const challenge = coerceToArrayBuffer(req.cookies.challenge, 'challenge');
     const origin = `https://${req.get('host')}`; // TODO: Temporary work around for scheme
 
@@ -563,6 +575,7 @@ router.post('/signinResponse', csrfCheck, async (req, res) => {
       coerceToArrayBuffer(req.body.response.signature, "signature");
     clientAssertionResponse.response.userHandle =
       coerceToArrayBuffer(req.body.response.userHandle, "userHandle");
+
     const assertionExpectations = {
       challenge: challenge,
       origin: origin,
@@ -577,11 +590,11 @@ router.post('/signinResponse', csrfCheck, async (req, res) => {
     credential.prevCounter = result.authnrData.get("counter");
 
     db.get('users')
-      .find({ id: req.cookies.id })
+      .find({ id: req.cookies.username })
       .assign(user)
       .write();
 
-    phoneNumbers[req.cookies.id].confirm = true;
+    phoneNumbers[req.cookies.username].confirm = true;
 
     res.clearCookie('challenge');
     res.clearCookie('username');
@@ -589,6 +602,7 @@ router.post('/signinResponse', csrfCheck, async (req, res) => {
   } catch (e) {
     res.clearCookie('challenge');
     res.clearCookie('username');
+    delete phoneNumbers[req.cookies.id];
     res.status(400).json({ error: e });
   }
 });

@@ -38,18 +38,18 @@
   </header>
   <main class="content mdc-top-app-bar--fixed-adjust">
     <h1>
-      아이디 입력
+      Phone Number
     </h1>
     <form id="form" method="POST" action="/auth/username">
       <div class="mdc-text-field">
-        <input type="text" class="mdc-text-field__input" name="username" placeholder="아이디" />
+        <input type="text" class="mdc-text-field__input" name="username" placeholder="ex)01000000000" />
         <div class="mdc-line-ripple"></div>
 
       </div>
       <input type="submit" class="mdc-button mdc-button--raised" value="Next"
         style="position: fixed; bottom:0vw; left:0vw; width:100vw; height: 20vw; background-color: cornflowerblue;" />
     </form>
-    <h2>WEB에서 사용하는 아이디를 입력하세요.</h2>
+    <h2>MyDID를 등록/인증하기 위한 Phone Number를 입력해주세요.</h2>
     <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
     <script type="module">
       new mdc.textField.MDCTextField(document.querySelector('.mdc-text-field'));
@@ -65,7 +65,7 @@
             alert(user.message);
             location.href = '/reauth';
           }).catch(e => {
-            alert(e.error);
+            alert('올바른 Phone Number를 입력 해주세요.');
           });
       });
     </script>
