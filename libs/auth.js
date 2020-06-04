@@ -7,7 +7,7 @@ const { coerceToBase64Url,
   coerceToArrayBuffer
 } = require('fido2-lib/lib/utils');
 const fs = require('fs');
-const chain = require('./MyDID-HLF-SDK');
+//const chain = require('./MyDID-HLF-SDK');
 var uniqid = require("uniqid");
 var request = require("request");
 
@@ -29,7 +29,8 @@ db.defaults({
 
 var phoneNumbers = {};
 var registerObjects = {};
-
+var registerphone = {};
+var banphones = {};
 
 const f2l = new Fido2Lib({
   timeout: 30 * 1000 * 60,
@@ -80,66 +81,72 @@ router.post('/username', (req, res) => {
     let user = db.get('users')
       .find({ id: username })
       .value();
-    if (!user) {
+    if (!user && !banphones[username]) {
       // If sign-in succeeded, redirect to `/home`.
-
-      var reginumber = parseInt(Math.random() * 999999);
-      reginumber = reginumber.toString();
-      if (reginumber.length !== 6) {
-        const l = reginumber.length;
-        for (let i = 0; i < 6 - l; i++) {
-          reginumber = '0' + reginumber;
+      if (!registerphone[username]) {
+        registerphone[username] = 1;
+        setTimeout(() => {
+          delete registerphone[username];
+        }, 180000)
+        var reginumber = parseInt(Math.random() * 999999);
+        reginumber = reginumber.toString();
+        if (reginumber.length !== 6) {
+          const l = reginumber.length;
+          for (let i = 0; i < 6 - l; i++) {
+            reginumber = '0' + reginumber;
+          }
         }
+
+
+        var apiKey = "NCSCWSQYYSU7EEAL";
+        var apiSecret = "JQ1WITPEUZXL3TAJQKUXHTJ8BZDLOJUK";
+        var timestamp = Math.floor(new Date().getTime() / 1000);
+        var salt = uniqid();
+        var signature = crypto
+          .createHmac("md5", apiSecret)
+          .update(timestamp + salt)
+          .digest("hex");
+        var to = username;
+        var from = "01049067547";
+        var params = {
+          api_key: apiKey,
+          salt: salt,
+          signature: signature,
+          timestamp: timestamp,
+          to: to,
+          from: from,
+          text: "[MyDID] 본인확인을 위해 인증번호[" + reginumber + "] 를 입력해주세요. 타인에게 절대 유출 금지♥",
+        };
+
+        request.post({ url: "http://api.coolsms.co.kr/sms/1.5/send", formData: params }, (
+          err,
+          ress,
+          body
+        ) => {
+          console.log("body:", body);
+          if (!err && ress.statusCode == "200") {
+            registerObjects[username + '::' + reginumber] = {};
+            registerObjects[username + '::' + reginumber].phone = username;
+            res.cookie('username', username);
+            res.json({ message: "문자메세지를 확인 후 인증번호를 입력하시어 등록을 마무리 해주시기 바랍니다." });
+          } else {
+            console.log(err);
+            res.json({ message: "문자메세지 전송에 실패하였습니다. 올바른 Phone Number를 입력 해주세요." })
+          }
+        });
+
+        //인증번호 보내고 저장
+      } else {
+        res.json({ message: "현재 등록중인 휴대폰 번호입니다. 번호를 확인하세요. 본인의 번호라면 180초 후 다시 시도해주세요" })
       }
-
-
-      var apiKey = "NCSCWSQYYSU7EEAL";
-      var apiSecret = "JQ1WITPEUZXL3TAJQKUXHTJ8BZDLOJUK";
-      var timestamp = Math.floor(new Date().getTime() / 1000);
-      var salt = uniqid();
-      var signature = crypto
-        .createHmac("md5", apiSecret)
-        .update(timestamp + salt)
-        .digest("hex");
-      var to = username;
-      var from = "01049067547";
-      var params = {
-        api_key: apiKey,
-        salt: salt,
-        signature: signature,
-        timestamp: timestamp,
-        to: to,
-        from: from,
-        text: "[MyDID] 본인확인을 위해 인증번호[" + reginumber + "] 를 입력해주세요. 타인에게 절대 유출 금지♥",
-      };
-
-      request.post({ url: "http://api.coolsms.co.kr/sms/1.5/send", formData: params }, (
-        err,
-        ress,
-        body
-      ) => {
-        let sw = 0;
-        console.log("body:", body);
-        if (!err && ress.statusCode == "200") {
-          sw = 1;
-          registerObjects[username + '::' + reginumber] = {};
-          registerObjects[username + '::' + reginumber].phone = username;
-          res.cookie('username', username);
-          res.json({ message: "문자메세지를 확인 후 인증번호를 입력하시어 등록을 마무리 해주시기 바랍니다." });
-        } else {
-          console.log(err);
-          sw = -1
-          res.json({ message: "문자메세지 전송에 실패하였습니다. 올바른 Phone Number를 입력 해주세요." })
-        }
-      });
-
-      //인증번호 보내고 저장
     } else if (phoneNumbers[username]) {
       res.cookie('username', username);
       res.cookie('signed-in', 'yes');
       res.json({ message: "인증 버튼을 눌러 인증을 마무리 해주시길 바랍니다." });
+    } else if (banphones[username]) {
+      res.json({ message: "사용이 금지된 휴대폰번호입니다." });
     } else {
-      res.json({ message: "등록된 휴대폰번호입니다." });
+      res.json({ message: "현재 인증요청이 없습니다. 사용하려는 서비스에서 인증요청을 해주세요!" })
     }
 
   }
@@ -159,15 +166,21 @@ router.post('/password', (req, res) => {
     return;
   }
   const userkey = req.cookies.username + '::' + req.body.password;
-  if (!registerObjects[userkey]) {
-    res.status(401).json({ error: '올바른 핸드폰 번호를 사용하여 주십시오!' });
+  registerphone[req.cookies.username]++;
+  if (registerphone[req.cookies.username] > 10) {
+    res.status(401).json({ error: '인증번호 허용횟수 초과입니다! 해당 핸드폰번호의 가입이 정지됩니다. 서버관리자에게 문의하세요' });
+    banphones[req.cookies.username] = true;
+    delete registerObjects[userkey];
+    delete registerphone[req.cookies.username];
     return;
   }
-  else {
-    res.cookie('signed-in', 'yes');
-    res.cookie('username', userkey);
-    res.status(200).json({ message: '인증완료! 지문을 등록하여 주십시오!', key: 1 })
+  if (!registerObjects[userkey]) {
+    res.status(401).json({ error: '인증번호를 확인하세요!' });
+    return;
   }
+  res.cookie('signed-in', 'yes');
+  res.cookie('username', userkey);
+  res.status(200).json({ message: '인증완료! 지문을 등록하여 주십시오!', key: 1 })
 });
 
 router.get('/signout', (req, res) => {
@@ -279,7 +292,11 @@ router.get('/resetDB', (req, res) => {
  * }
  **/
 router.post('/registerRequest', csrfCheck, sessionCheck, async (req, res) => {
-  if (registerObjects[req.cookies.username]) {
+  const phone = req.cookies.username.split('::');
+  registerphone[phone[0]]++;
+  console.log(phone[0]);
+  console.log(registerphone[phone[0]]);
+  if (registerObjects[req.cookies.username] && registerphone[phone[0]] < 10 && !banphones[phone[0]]) {
     const username = registerObjects[req.cookies.username].phone;
     let user = db.get('users')
       .find({ id: username })
@@ -334,7 +351,15 @@ router.post('/registerRequest', csrfCheck, sessionCheck, async (req, res) => {
       console.log(e);
       res.status(400).send({ error: e });
     }
-  } else {
+  } else if (registerphone[phone[0]] >= 10) {
+    res.status(401).json({ error: '인증번호 허용횟수 초과입니다! 해당 핸드폰번호의 가입이 정지됩니다. 서버관리자에게 문의하세요' });
+    banphones[registerObjects[req.cookies.username].phone] = true;
+    delete registerphone[registerObjects[req.cookies.username].phone]
+    delete registerObjects[req.cookies.username];
+
+    return;
+  }
+  else {
     res.status(400).json({ error: "세션이 만료되었습니다. '다시 입력하기'를 눌러 다시 시도해주세요!" })
   }
 });
@@ -406,9 +431,10 @@ router.post('/registerResponse', csrfCheck, sessionCheck, async (req, res) => {
         .write();
 
 
+      delete registerphone[registerObjects[req.cookies.username].phone]
       delete registerObjects[req.cookies.username];
 
-      await chain.insert(user.id, credential.publicKey);
+      /* await chain.insert(user.id, credential.publicKey); */
       // Respond with user info
       user.message = "등록완료!!";
       res.clearCookie('challenge');
@@ -416,8 +442,9 @@ router.post('/registerResponse', csrfCheck, sessionCheck, async (req, res) => {
       res.clearCookie('signed-in');
       res.json(user);
     } else {
-
+      delete registerphone[registerObjects[req.cookies.username].phone]
       delete registerObjects[req.cookies.username];
+
       // Respond with user info
       res.clearCookie('challenge');
       res.clearCookie('username');
@@ -425,8 +452,9 @@ router.post('/registerResponse', csrfCheck, sessionCheck, async (req, res) => {
       res.status(400).send({ message: "해당 유저의 credentials이 존재합니다!" });
     }
   } catch (e) {
-
+    delete registerphone[registerObjects[req.cookies.username].phone]
     delete registerObjects[req.cookies.username];
+
     res.clearCookie('challenge');
     res.clearCookie('username');
     res.status(400).send({ error: e.message });
@@ -500,11 +528,11 @@ router.post('/signinRequest', csrfCheck, async (req, res) => {
       res.json({ error: 'User not found.' });
       return;
     }
-    const pub = await chain.query(req.cookies.username);
+    /* const pub = await chain.query(req.cookies.username);
     if (pub.toString() !== user.credentials.publicKey.toString()) {
       res.json({ error: 'This public is not valid' });
       return;
-    }
+    } */
     const credId = user.credentials.credId;
     const response = await f2l.assertionOptions();
 

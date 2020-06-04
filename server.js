@@ -42,7 +42,7 @@ app.use(function (req, res, next) {
   }
 })
 
-enroll();
+//enroll();
 
 app.set('view engine', 'html');
 app.engine('html', hbs.__express);
